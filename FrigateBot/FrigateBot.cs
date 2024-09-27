@@ -139,7 +139,7 @@ namespace FrigateBot
             {
                 var newConfigureCommand = new SlashCommandBuilder()
                 .WithName(configureCommandName)
-                .WithDescription("Configure Astolfo Bot")
+                .WithDescription($"Configure {discord.CurrentUser.GlobalName ?? "Frigate Bot"}")
                     .WithDefaultMemberPermissions(GuildPermission.Administrator)
                     .AddOption(new SlashCommandOptionBuilder()
                         .WithName(configureCctvChannelOptionName)
