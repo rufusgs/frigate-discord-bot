@@ -7,13 +7,13 @@ var config = new ConfigurationBuilder()
     .AddUserSecrets<Program>()
     .Build();
 
+var options = config.Get<FrigateBotOptions>() ?? new();
+
 var logger = new LoggerConfiguration()
     .MinimumLevel.Information()
     .Enrich.FromLogContext()
-    .WriteTo.File("log.txt")
+    .WriteTo.File(options.LogPath)
     .CreateLogger();
-
-var options = config.Get<FrigateBotOptions>() ?? new();
 
 if (string.IsNullOrEmpty(options.DiscordToken))
 {
