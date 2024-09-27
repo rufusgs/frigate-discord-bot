@@ -1,5 +1,7 @@
 ﻿using Discord;
 using Discord.WebSocket;
+using Serilog;
+using Serilog.Events;
 using System.Buffers.Text;
 using System.Text;
 
@@ -10,6 +12,7 @@ namespace FrigateBot
         private const string configureCommandName = "configure";
         private const string configureCctvChannelOptionName = "cctv-channel";
 
+        private readonly ILogger logger;
         private readonly State state;
         private readonly TimeSpan frigatePollInterval;
         private readonly FrigateClient frigate;
@@ -17,8 +20,9 @@ namespace FrigateBot
         private readonly string discordToken;
         private TaskCompletionSource discordReadyTcs;
 
-        public FrigateBot(FrigateBotOptions options)
+        public FrigateBot(FrigateBotOptions options, ILogger logger)
         {
+            this.logger = logger;
             state = State.Load(options.StatePath);
             frigatePollInterval = TimeSpan.FromSeconds(options.FrigatePollIntervalSeconds);
             frigate = new(options.FrigateAddress);
@@ -39,7 +43,18 @@ namespace FrigateBot
 
         private Task Discord_Log(LogMessage msg)
         {
-            Console.WriteLine(msg.ToString());
+            var serilogSeverity = msg.Severity switch
+            {
+                LogSeverity.Critical or LogSeverity.Error => LogEventLevel.Error,
+                LogSeverity.Warning => LogEventLevel.Warning,
+                LogSeverity.Info => LogEventLevel.Information,
+                LogSeverity.Verbose => LogEventLevel.Verbose,
+                LogSeverity.Debug => LogEventLevel.Debug,
+                var unknownSeverity => throw new ArgumentException($"Unknown log severity {unknownSeverity}", nameof(msg)),
+            };
+
+            logger.Write(serilogSeverity, msg.Exception, "Discord message {Message} from {Source}", msg.Message, msg.Source);
+
             return Task.CompletedTask;
         }
 
@@ -66,7 +81,7 @@ namespace FrigateBot
                     {
                         if (state.CctvChannelByGuild.TryGetValue(command.GuildId.Value, out var existingTextChannelId) && existingTextChannelId != textChannel.Id)
                         {
-                            Console.WriteLine($"Changing CCTV channel for guild {command.GuildId.Value} from {existingTextChannelId} to {textChannel.Id}");
+                            logger.Information("Changing CCTV channel for guild {GuildId} from {ExistingChannelId} to {NewChannelId}", command.GuildId.Value, existingTextChannelId, textChannel.Id);
                         }
                         state.Alter(state => state.CctvChannelByGuild[command.GuildId.Value] = textChannel.Id);
                         await command.RespondAsync("CCTV channel updated!");
@@ -157,7 +172,7 @@ namespace FrigateBot
                                 thumbnailStream = new(thumbnailBase64, 0, thumbnailBytes);
                             }
 
-                            Console.WriteLine($"Notifying about event {@event.Id} from {@event.StartTime} to {@event.EndTime}");
+                            logger.Information("Notifying about event {Id} from {StartTime} to {EndTime}", @event.Id, @event.StartTime, @event.EndTime);
 
                             foreach (var guild in discord.Guilds)
                             {
@@ -178,7 +193,7 @@ namespace FrigateBot
                                     }
                                     else
                                     {
-                                        Console.WriteLine($"Guild channel {channelId} does not exist!");
+                                        logger.Error("Guild channel {ChannelId} does not exist", channelId);
                                     }
                                 }
                             }
@@ -187,7 +202,7 @@ namespace FrigateBot
                             if ((!state.LastCompletedEventStartUtc.HasValue || state.LastCompletedEventStartUtc.Value < @event.StartTime))
                             {
                                 var newCutoff = @event.StartTime.AddSeconds(1);
-                                Console.WriteLine($"Advancing event query start time to {newCutoff}");
+                                logger.Information("Advancing event query start time to {NewCutoff}", newCutoff);
                                 state.Alter(state => state.LastCompletedEventStartUtc = newCutoff);
                             }
                         }
@@ -195,7 +210,7 @@ namespace FrigateBot
                 }
                 catch (Exception ex)
                 {
-                    Console.Error.WriteLine(ex);
+                    logger.Error(ex, "Exception during main loop");
                 }
                 finally
                 {
