@@ -1,0 +1,17 @@
+#user files
+*.suo
+*.user
+.vs/
+.vscode/
+
+#build products
+[Bb]in/
+[Oo]bj/
+artifacts/
+
+#profiling
+*.psess
+*.vsp
+*.vspx
+TestResults/
+BenchmarkDotNet.Artifacts/
