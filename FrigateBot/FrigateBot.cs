@@ -43,6 +43,12 @@ namespace FrigateBot
 
         private Task Discord_Log(LogMessage msg)
         {
+            // this is the only way I could see to subscribe to this info
+            if (msg.Message.StartsWith("Resumed previous session") && msg.Source == "Gateway")
+            {
+                discordReadyTcs.TrySetResult();
+            }
+
             var serilogSeverity = msg.Severity switch
             {
                 LogSeverity.Critical or LogSeverity.Error => LogEventLevel.Error,
