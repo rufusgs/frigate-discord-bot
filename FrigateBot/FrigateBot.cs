@@ -11,7 +11,9 @@ public sealed class FrigateBot
 {
     private const string configureCommandName = "configure";
     private const string configureCctvChannelOptionName = "cctv-channel";
+    private const string postClipCommandPrefix = "post-clip-";
 
+    private static readonly Emoji filmFramesEmoji = new("🎞️");
     private readonly ILogger logger;
     private readonly State state;
     private readonly TimeSpan frigatePollInterval;
@@ -39,6 +41,7 @@ public sealed class FrigateBot
         discord.Disconnected += Discord_Disconnected;
         discord.Log += Discord_Log;
         discord.SlashCommandExecuted += Discord_SlashCommandExecuted;
+        discord.ButtonExecuted += Discord_ButtonExecuted;
     }
 
     private Task Discord_Log(LogMessage msg)
@@ -74,6 +77,46 @@ public sealed class FrigateBot
             default:
                 await command.RespondAsync("Unknown command");
                 break;
+        }
+    }
+
+    private async Task Discord_ButtonExecuted(SocketMessageComponent component)
+    {
+        if (component.Data.CustomId?.StartsWith(postClipCommandPrefix) ?? false)
+        {
+            var eventId = component.Data.CustomId[postClipCommandPrefix.Length..];
+            if(string.IsNullOrEmpty(eventId))
+            {
+                await component.RespondAsync("No frigate event ID specified", ephemeral: true);
+            }
+            else
+            {
+                await component.DeferLoadingAsync();
+
+                try
+                {
+                    var clipStream = await frigate.GetEventClipAsync(eventId);
+                    if(clipStream is null)
+                    {
+                        logger.Warning("Unable to retrieve clip for event when responding to button press.");
+                        await component.FollowupAsync("Unknown frigate event ID", ephemeral: true);
+                    }
+                    else
+                    {
+                        logger.Information("{User} requested clip upload for event {Id}.", component.User.GlobalName, eventId);
+                        await component.FollowupWithFileAsync(clipStream, $"{eventId}.mp4", $"{component.User.Mention} requested clip upload.");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.Warning(ex, "Exception while attempting to retrieve or upload clip for event when responding to button press.");
+                    await component.FollowupAsync($"Error while attempting to retrieve or upload clip for event `{eventId}`", ephemeral: true);
+                }
+            }
+        }
+        else
+        {
+            await component.RespondAsync("Unknown button executed", ephemeral: true);
         }
     }
 
@@ -211,13 +254,17 @@ public sealed class FrigateBot
                                     messageText.Append(@event.EndTime.ToUnixTimeSeconds());
                                     messageText.Append(":T>.");
 
+                                    var postClipButton = new ComponentBuilder()
+                                        .WithButton("Post Clip", $"post-clip-{@event.Id}", emote: filmFramesEmoji)
+                                        .Build();
+
                                     if (previewStream is not null)
                                     {
-                                        await cctvChannel.SendFilesAsync([new FileAttachment(previewStream, $"{@event.Id}.gif", description: @event.Label)], messageText.ToString());
+                                        await cctvChannel.SendFilesAsync([new FileAttachment(previewStream, $"{@event.Id}.gif", description: @event.Label)], messageText.ToString(), components: postClipButton);
                                     }
                                     else
                                     {
-                                        await cctvChannel.SendMessageAsync(messageText.ToString());
+                                        await cctvChannel.SendMessageAsync(messageText.ToString(), components: postClipButton);
                                     }
                                 }
                                 else

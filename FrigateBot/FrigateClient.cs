@@ -40,6 +40,15 @@ public sealed class FrigateClient(string baseAddress) : IDisposable
         return await httpClient.GetStreamAsync(queryBuilder.ToString());
     }
 
+    public async Task<Stream?> GetEventClipAsync(string eventId)
+    {
+        var queryBuilder = new StringBuilder("api/events/");
+        queryBuilder.Append(eventId);
+        queryBuilder.Append("/clip.mp4");
+
+        return await httpClient.GetStreamAsync(queryBuilder.ToString());
+    }
+
     public void Dispose()
     {
         httpClient.Dispose();
