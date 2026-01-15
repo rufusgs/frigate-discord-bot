@@ -93,25 +93,29 @@ public sealed class FrigateBot
             {
                 await component.DeferLoadingAsync();
 
-                try
+                // service the request on the thread pool rather than blocking the gateway
+                _ = Task.Run(async () =>
                 {
-                    var clipStream = await frigate.GetEventClipAsync(eventId);
-                    if(clipStream is null)
+                    try
                     {
-                        logger.Warning("Unable to retrieve clip for event when responding to button press.");
-                        await component.FollowupAsync("Unknown frigate event ID", ephemeral: true);
+                        var clipStream = await frigate.GetEventClipAsync(eventId);
+                        if(clipStream is null)
+                        {
+                            logger.Warning("Unable to retrieve clip for event when responding to button press.");
+                            await component.FollowupAsync("Unknown frigate event ID", ephemeral: true);
+                        }
+                        else
+                        {
+                            logger.Information("{User} requested clip upload for event {Id}.", component.User.GlobalName, eventId);
+                            await component.FollowupWithFileAsync(clipStream, $"{eventId}.mp4", $"{component.User.Mention} requested clip upload.");
+                        }
                     }
-                    else
+                    catch (Exception ex)
                     {
-                        logger.Information("{User} requested clip upload for event {Id}.", component.User.GlobalName, eventId);
-                        await component.FollowupWithFileAsync(clipStream, $"{eventId}.mp4", $"{component.User.Mention} requested clip upload.");
+                        logger.Warning(ex, "Exception while attempting to retrieve or upload clip for event when responding to button press.");
+                        await component.FollowupAsync($"Error while attempting to retrieve or upload clip for event `{eventId}`", ephemeral: true);
                     }
-                }
-                catch (Exception ex)
-                {
-                    logger.Warning(ex, "Exception while attempting to retrieve or upload clip for event when responding to button press.");
-                    await component.FollowupAsync($"Error while attempting to retrieve or upload clip for event `{eventId}`", ephemeral: true);
-                }
+                });
             }
         }
         else
