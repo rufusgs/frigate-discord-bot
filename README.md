@@ -18,7 +18,7 @@ services:
     ports:
       - "127.0.0.1:5000:5000" # Internal unauthenticated access. Expose carefully.
 ```
-4. Install .NET 8 runtime on your system: https://learn.microsoft.com/en-us/dotnet/core/install/linux
+4. Install .NET 10 runtime on your system: https://learn.microsoft.com/en-us/dotnet/core/install/linux
 5. Download and unzip the latest release (or build it from source with `dotnet publish`). You might want to configure a separate user with limited privileges and a systemd service for it so it starts up automatically. Note that the bot stores its (very limited) state in a json file called `state.json` by default so it will need write access to that file.
 6. Modify `appsettings.json` and enter the discord token you generated back in step 1.
 7. Run the bot: `dotnet FrigateBot.dll`
