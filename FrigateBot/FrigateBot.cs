@@ -170,12 +170,16 @@ public sealed class FrigateBot
                 {
                     foreach (var @event in eventsResult)
                     {
-                        var thumbnailStream = default(MemoryStream);
-                        if (!string.IsNullOrEmpty(@event.Thumbnail))
+                        Stream? previewStream;
+                        try
                         {
-                            var thumbnailBase64 = Encoding.UTF8.GetBytes(@event.Thumbnail);
-                            Base64.DecodeFromUtf8InPlace(thumbnailBase64, out var thumbnailBytes);
-                            thumbnailStream = new(thumbnailBase64, 0, thumbnailBytes);
+                            previewStream = await frigate.GetEventPreviewAsync(@event.Id);
+                            // thumbnailStream = await frigate.GetEventThumbnailAsync(@event.Id, "jpg");
+                        }
+                        catch (Exception ex)
+                        {
+                            previewStream = null;
+                            logger.Warning(ex, "Failed to retrieve thumbnail for event {Id}", @event.Id);
                         }
 
                         logger.Information("Notifying about event {Id} from {StartTime} to {EndTime}", @event.Id, @event.StartTime, @event.EndTime);
@@ -188,9 +192,9 @@ public sealed class FrigateBot
                                 {
                                     var messageText = $"Camera `{@event.Camera}` detected `{@event.Label}` on <t:{@event.StartTime.ToUnixTimeSeconds()}:d> between <t:{@event.StartTime.ToUnixTimeSeconds()}:T> and <t:{@event.EndTime.ToUnixTimeSeconds()}:T>.";
 
-                                    if (thumbnailStream is not null)
+                                    if (previewStream is not null)
                                     {
-                                        await cctvChannel.SendFilesAsync([new FileAttachment(thumbnailStream, $"{@event.Id}.jpg", description: @event.Label)], messageText);
+                                        await cctvChannel.SendFilesAsync([new FileAttachment(previewStream, $"{@event.Id}.gif", description: @event.Label)], messageText);
                                     }
                                     else
                                     {
@@ -205,7 +209,7 @@ public sealed class FrigateBot
                         }
 
                         // does this event end after the current persist
-                        if ((!state.LastCompletedEventStartUtc.HasValue || state.LastCompletedEventStartUtc.Value < @event.StartTime))
+                        if (!state.LastCompletedEventStartUtc.HasValue || state.LastCompletedEventStartUtc.Value < @event.StartTime)
                         {
                             var newCutoff = @event.StartTime.AddSeconds(1);
                             logger.Information("Advancing event query start time to {NewCutoff}", newCutoff);

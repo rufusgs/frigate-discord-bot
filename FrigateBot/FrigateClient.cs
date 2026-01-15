@@ -21,6 +21,25 @@ public sealed class FrigateClient(string baseAddress) : IDisposable
         return httpClient.GetFromJsonAsync<List<EventModel>>(queryBuilder.ToString());
     }
 
+    public async Task<Stream?> GetEventThumbnailAsync(string eventId, string extension)
+    {
+        var queryBuilder = new StringBuilder("api/events/");
+        queryBuilder.Append(eventId);
+        queryBuilder.Append("/thumbnail.");
+        queryBuilder.Append(extension);
+
+        return await httpClient.GetStreamAsync(queryBuilder.ToString());
+    }
+
+    public async Task<Stream?> GetEventPreviewAsync(string eventId)
+    {
+        var queryBuilder = new StringBuilder("api/events/");
+        queryBuilder.Append(eventId);
+        queryBuilder.Append("/preview.gif");
+
+        return await httpClient.GetStreamAsync(queryBuilder.ToString());
+    }
+
     public void Dispose()
     {
         httpClient.Dispose();
