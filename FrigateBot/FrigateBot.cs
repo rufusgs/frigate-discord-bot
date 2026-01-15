@@ -190,15 +190,34 @@ public sealed class FrigateBot
                             {
                                 if (guild.GetTextChannel(channelId) is var cctvChannel and not null)
                                 {
-                                    var messageText = $"Camera `{@event.Camera}` detected `{@event.Label}` on <t:{@event.StartTime.ToUnixTimeSeconds()}:d> between <t:{@event.StartTime.ToUnixTimeSeconds()}:T> and <t:{@event.EndTime.ToUnixTimeSeconds()}:T>.";
+                                    var messageText = new StringBuilder("Camera `");
+                                    messageText.Append(@event.Camera);
+                                    messageText.Append("` detected `");
+                                    messageText.Append(@event.Label);
+                                    messageText.Append('`');
+
+                                    if (!string.IsNullOrWhiteSpace(@event.SubLabel))
+                                    {
+                                        messageText.Append(" (`");
+                                        messageText.Append(@event.SubLabel);
+                                        messageText.Append("`)");
+                                    }
+
+                                    messageText.Append(" on <t:");
+                                    messageText.Append(@event.StartTime.ToUnixTimeSeconds());
+                                    messageText.Append(":d> between <t:");
+                                    messageText.Append(@event.StartTime.ToUnixTimeSeconds());
+                                    messageText.Append(":T> and <t:");
+                                    messageText.Append(@event.EndTime.ToUnixTimeSeconds());
+                                    messageText.Append(":T>.");
 
                                     if (previewStream is not null)
                                     {
-                                        await cctvChannel.SendFilesAsync([new FileAttachment(previewStream, $"{@event.Id}.gif", description: @event.Label)], messageText);
+                                        await cctvChannel.SendFilesAsync([new FileAttachment(previewStream, $"{@event.Id}.gif", description: @event.Label)], messageText.ToString());
                                     }
                                     else
                                     {
-                                        await cctvChannel.SendMessageAsync(messageText);
+                                        await cctvChannel.SendMessageAsync(messageText.ToString());
                                     }
                                 }
                                 else
