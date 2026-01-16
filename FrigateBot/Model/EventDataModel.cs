@@ -9,5 +9,7 @@ public sealed class EventDataModel
     public float? Score { get; init; }
     [JsonPropertyName("top_score")]
     public float? TopScore { get; init; }
-    public required string Type { get; init; } = "";
+    public string? Type { get; init; }
+    [JsonPropertyName("max_severity")]
+    public string? MaxSeverity { get; init; }
 }

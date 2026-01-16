@@ -7,4 +7,5 @@ public sealed class FrigateBotOptions
     public string FrigateAddress { get; set; } = "http://127.0.0.1:5000/";
     public string DiscordToken { get; set; } = "";
     public string LogPath { get; set; } = "log.txt";
+    public bool ShowDetections { get; set; } = false;
 }

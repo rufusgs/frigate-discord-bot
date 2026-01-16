@@ -2,7 +2,6 @@
 using Discord.WebSocket;
 using Serilog;
 using Serilog.Events;
-using System.Buffers.Text;
 using System.Text;
 
 namespace FrigateBot;
@@ -20,6 +19,7 @@ public sealed class FrigateBot
     private readonly FrigateClient frigate;
     private readonly DiscordSocketClient discord;
     private readonly string discordToken;
+    private readonly bool showDetections;
     private TaskCompletionSource discordReadyTcs;
 
     public FrigateBot(FrigateBotOptions options, ILogger logger)
@@ -35,6 +35,7 @@ public sealed class FrigateBot
             MaxWaitBetweenGuildAvailablesBeforeReady = int.MaxValue,
         });
         discordToken = options.DiscordToken;
+        showDetections = options.ShowDetections;
 
         discord.JoinedGuild += Discord_JoinedGuild;
         discord.Ready += Discord_Ready;
@@ -85,7 +86,7 @@ public sealed class FrigateBot
         if (component.Data.CustomId?.StartsWith(postClipCommandPrefix) ?? false)
         {
             var eventId = component.Data.CustomId[postClipCommandPrefix.Length..];
-            if(string.IsNullOrEmpty(eventId))
+            if (string.IsNullOrEmpty(eventId))
             {
                 await component.RespondAsync("No frigate event ID specified", ephemeral: true);
             }
@@ -99,7 +100,7 @@ public sealed class FrigateBot
                     try
                     {
                         var clipStream = await frigate.GetEventClipAsync(eventId);
-                        if(clipStream is null)
+                        if (clipStream is null)
                         {
                             logger.Warning("Unable to retrieve clip for event when responding to button press.");
                             await component.FollowupAsync("Unknown frigate event ID", ephemeral: true);
@@ -217,65 +218,72 @@ public sealed class FrigateBot
                 {
                     foreach (var @event in eventsResult)
                     {
-                        Stream? previewStream;
-                        try
+                        if (showDetections || string.Equals(@event.Data?.MaxSeverity, "alert"))
                         {
-                            previewStream = await frigate.GetEventPreviewAsync(@event.Id);
-                            // thumbnailStream = await frigate.GetEventThumbnailAsync(@event.Id, "jpg");
-                        }
-                        catch (Exception ex)
-                        {
-                            previewStream = null;
-                            logger.Warning(ex, "Failed to retrieve thumbnail for event {Id}", @event.Id);
-                        }
-
-                        logger.Information("Notifying about event {Id} from {StartTime} to {EndTime}", @event.Id, @event.StartTime, @event.EndTime);
-
-                        foreach (var guild in discord.Guilds)
-                        {
-                            if (state.CctvChannelByGuild.TryGetValue(guild.Id, out var channelId))
+                            Stream? previewStream;
+                            try
                             {
-                                if (guild.GetTextChannel(channelId) is var cctvChannel and not null)
+                                previewStream = await frigate.GetEventPreviewAsync(@event.Id);
+                                // thumbnailStream = await frigate.GetEventThumbnailAsync(@event.Id, "jpg");
+                            }
+                            catch (Exception ex)
+                            {
+                                previewStream = null;
+                                logger.Warning(ex, "Failed to retrieve thumbnail for event {Id}", @event.Id);
+                            }
+    
+                            logger.Information("Notifying about event {Id} from {StartTime} to {EndTime}", @event.Id, @event.StartTime, @event.EndTime);
+    
+                            foreach (var guild in discord.Guilds)
+                            {
+                                if (state.CctvChannelByGuild.TryGetValue(guild.Id, out var channelId))
                                 {
-                                    var messageText = new StringBuilder("Camera `");
-                                    messageText.Append(@event.Camera);
-                                    messageText.Append("` detected `");
-                                    messageText.Append(@event.Label);
-                                    messageText.Append('`');
-
-                                    if (!string.IsNullOrWhiteSpace(@event.SubLabel))
+                                    if (guild.GetTextChannel(channelId) is var cctvChannel and not null)
                                     {
-                                        messageText.Append(" (`");
-                                        messageText.Append(@event.SubLabel);
-                                        messageText.Append("`)");
-                                    }
-
-                                    messageText.Append(" on <t:");
-                                    messageText.Append(@event.StartTime.ToUnixTimeSeconds());
-                                    messageText.Append(":d> between <t:");
-                                    messageText.Append(@event.StartTime.ToUnixTimeSeconds());
-                                    messageText.Append(":T> and <t:");
-                                    messageText.Append(@event.EndTime.ToUnixTimeSeconds());
-                                    messageText.Append(":T>.");
-
-                                    var postClipButton = new ComponentBuilder()
-                                        .WithButton("Post Clip", $"post-clip-{@event.Id}", emote: filmFramesEmoji)
-                                        .Build();
-
-                                    if (previewStream is not null)
-                                    {
-                                        await cctvChannel.SendFilesAsync([new FileAttachment(previewStream, $"{@event.Id}.gif", description: @event.Label)], messageText.ToString(), components: postClipButton);
+                                        var messageText = new StringBuilder("Camera `");
+                                        messageText.Append(@event.Camera);
+                                        messageText.Append("` detected `");
+                                        messageText.Append(@event.Label);
+                                        messageText.Append('`');
+    
+                                        if (!string.IsNullOrWhiteSpace(@event.SubLabel))
+                                        {
+                                            messageText.Append(" (`");
+                                            messageText.Append(@event.SubLabel);
+                                            messageText.Append("`)");
+                                        }
+    
+                                        messageText.Append(" on <t:");
+                                        messageText.Append(@event.StartTime.ToUnixTimeSeconds());
+                                        messageText.Append(":d> between <t:");
+                                        messageText.Append(@event.StartTime.ToUnixTimeSeconds());
+                                        messageText.Append(":T> and <t:");
+                                        messageText.Append(@event.EndTime.ToUnixTimeSeconds());
+                                        messageText.Append(":T>.");
+    
+                                        var postClipButton = new ComponentBuilder()
+                                            .WithButton("Post Clip", $"post-clip-{@event.Id}", emote: filmFramesEmoji)
+                                            .Build();
+    
+                                        if (previewStream is not null)
+                                        {
+                                            await cctvChannel.SendFilesAsync([new FileAttachment(previewStream, $"{@event.Id}.gif", description: @event.Label)], messageText.ToString(), components: postClipButton);
+                                        }
+                                        else
+                                        {
+                                            await cctvChannel.SendMessageAsync(messageText.ToString(), components: postClipButton);
+                                        }
                                     }
                                     else
                                     {
-                                        await cctvChannel.SendMessageAsync(messageText.ToString(), components: postClipButton);
+                                        logger.Error("Guild channel {ChannelId} does not exist", channelId);
                                     }
                                 }
-                                else
-                                {
-                                    logger.Error("Guild channel {ChannelId} does not exist", channelId);
-                                }
                             }
+                        }
+                        else
+                        {
+                            logger.Verbose("Ignoring detection level event {Id}", @event.Id);
                         }
 
                         // does this event end after the current persist
