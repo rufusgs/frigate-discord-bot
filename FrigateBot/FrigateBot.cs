@@ -231,9 +231,9 @@ public sealed class FrigateBot
                                 previewStream = null;
                                 logger.Warning(ex, "Failed to retrieve thumbnail for event {Id}", @event.Id);
                             }
-    
+
                             logger.Information("Notifying about event {Id} from {StartTime} to {EndTime}", @event.Id, @event.StartTime, @event.EndTime);
-    
+
                             foreach (var guild in discord.Guilds)
                             {
                                 if (state.CctvChannelByGuild.TryGetValue(guild.Id, out var channelId))
@@ -245,14 +245,19 @@ public sealed class FrigateBot
                                         messageText.Append("` detected `");
                                         messageText.Append(@event.Label);
                                         messageText.Append('`');
-    
+
                                         if (!string.IsNullOrWhiteSpace(@event.SubLabel))
                                         {
                                             messageText.Append(" (`");
                                             messageText.Append(@event.SubLabel);
                                             messageText.Append("`)");
                                         }
-    
+
+                                        if (@event.Data?.Score != null)
+                                        {
+                                            messageText.AppendFormat(" with {0:P} confidence", @event.Data.Score);
+                                        }
+
                                         messageText.Append(" on <t:");
                                         messageText.Append(@event.StartTime.ToUnixTimeSeconds());
                                         messageText.Append(":d> between <t:");
@@ -260,11 +265,11 @@ public sealed class FrigateBot
                                         messageText.Append(":T> and <t:");
                                         messageText.Append(@event.EndTime.ToUnixTimeSeconds());
                                         messageText.Append(":T>.");
-    
+
                                         var postClipButton = new ComponentBuilder()
                                             .WithButton("Post Clip", $"post-clip-{@event.Id}", emote: filmFramesEmoji)
                                             .Build();
-    
+
                                         if (previewStream is not null)
                                         {
                                             await cctvChannel.SendFilesAsync([new FileAttachment(previewStream, $"{@event.Id}.gif", description: @event.Label)], messageText.ToString(), components: postClipButton);
