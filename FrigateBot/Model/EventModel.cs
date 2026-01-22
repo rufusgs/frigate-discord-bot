@@ -19,7 +19,7 @@ public sealed class EventModel
 
     [JsonPropertyName("end_time")]
     [JsonConverter(typeof(EpochTimeJsonConverter))]
-    public DateTimeOffset EndTime { get; init; }
+    public DateTimeOffset? EndTime { get; init; }
 
     [JsonPropertyName("has_clip")]
     public bool HasClip { get; init; }

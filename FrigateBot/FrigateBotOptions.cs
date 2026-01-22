@@ -8,4 +8,5 @@ public sealed class FrigateBotOptions
     public string DiscordToken { get; set; } = "";
     public string LogPath { get; set; } = "log.txt";
     public bool ShowDetections { get; set; } = false;
+    public int MaxIncompleteEventAgeSeconds { get; set; } = 30;
 }

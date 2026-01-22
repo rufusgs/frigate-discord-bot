@@ -20,6 +20,7 @@ public sealed class FrigateBot
     private readonly DiscordSocketClient discord;
     private readonly string discordToken;
     private readonly bool showDetections;
+    private readonly TimeSpan maxIncompleteEventAge;
     private TaskCompletionSource discordReadyTcs;
 
     public FrigateBot(FrigateBotOptions options, ILogger logger)
@@ -36,6 +37,7 @@ public sealed class FrigateBot
         });
         discordToken = options.DiscordToken;
         showDetections = options.ShowDetections;
+        maxIncompleteEventAge = TimeSpan.FromSeconds(options.MaxIncompleteEventAgeSeconds);
 
         discord.JoinedGuild += Discord_JoinedGuild;
         discord.Ready += Discord_Ready;
@@ -212,18 +214,26 @@ public sealed class FrigateBot
             {
                 await discordReadyTcs.Task;
 
+                var now = DateTimeOffset.Now;
                 var eventsResult = await frigate.GetEventsAsync(state.LastCompletedEventStartUtc);
 
                 if (eventsResult is not null && eventsResult.Count > 0)
                 {
                     foreach (var @event in eventsResult)
                     {
+                        if (!@event.EndTime.HasValue && (@event.StartTime >= now - maxIncompleteEventAge))
+                        {
+                            logger.Verbose("Deferring notification about event {Id} which is not yet complete", @event.Id);
+                            break;
+                        }
+
                         if (showDetections || string.Equals(@event.Data?.MaxSeverity, "alert"))
                         {
                             Stream? previewStream;
                             try
                             {
                                 previewStream = await frigate.GetEventPreviewAsync(@event.Id);
+                                // TODO: fallback to thumbnail if no preview
                                 // thumbnailStream = await frigate.GetEventThumbnailAsync(@event.Id, "jpg");
                             }
                             catch (Exception ex)
@@ -260,11 +270,20 @@ public sealed class FrigateBot
 
                                         messageText.Append(" on <t:");
                                         messageText.Append(@event.StartTime.ToUnixTimeSeconds());
-                                        messageText.Append(":d> between <t:");
-                                        messageText.Append(@event.StartTime.ToUnixTimeSeconds());
-                                        messageText.Append(":T> and <t:");
-                                        messageText.Append(@event.EndTime.ToUnixTimeSeconds());
-                                        messageText.Append(":T>.");
+                                        if (@event.EndTime.HasValue)
+                                        {
+                                            messageText.Append(":d> between <t:");
+                                            messageText.Append(@event.StartTime.ToUnixTimeSeconds());
+                                            messageText.Append(":T> and <t:");
+                                            messageText.Append(@event.EndTime.Value.ToUnixTimeSeconds());
+                                            messageText.Append(":T>.");
+                                        }
+                                        else
+                                        {
+                                            messageText.Append(":d> at <t:");
+                                            messageText.Append(@event.StartTime.ToUnixTimeSeconds());
+                                            messageText.Append(":T> (event is still ongoing).");
+                                        }
 
                                         var postClipButton = new ComponentBuilder()
                                             .WithButton("Post Clip", $"post-clip-{@event.Id}", emote: filmFramesEmoji)
