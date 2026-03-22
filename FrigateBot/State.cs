@@ -42,5 +42,6 @@ public sealed class State
 
     public DateTimeOffset? LastCompletedEventStartUtc { get; set; }
     public Dictionary<ulong, ulong> ConfigureCommandByGuildId { get; init; } = [];
+    public Dictionary<ulong, ulong> SilenceCommandByGuildId { get; init; } = [];
     public Dictionary<ulong, ulong> CctvChannelByGuild { get; init; } = [];
 }

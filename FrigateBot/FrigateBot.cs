@@ -10,6 +10,8 @@ public sealed class FrigateBot
 {
     private const string configureCommandName = "configure";
     private const string configureCctvChannelOptionName = "cctv-channel";
+    private const string silenceCommandName = "silence";
+    private const string silenceDurationOptionName = "duration";
     private const string postClipCommandPrefix = "post-clip-";
 
     private static readonly Emoji filmFramesEmoji = new("🎞️");
@@ -21,6 +23,7 @@ public sealed class FrigateBot
     private readonly string discordToken;
     private readonly bool showDetections;
     private readonly TimeSpan maxIncompleteEventAge;
+    private readonly bool allowSilenceCommand;
     private TaskCompletionSource discordReadyTcs;
 
     public FrigateBot(FrigateBotOptions options, ILogger logger)
@@ -37,6 +40,7 @@ public sealed class FrigateBot
         });
         discordToken = options.DiscordToken;
         showDetections = options.ShowDetections;
+        allowSilenceCommand = options.AllowSilenceCommand;
         maxIncompleteEventAge = TimeSpan.FromSeconds(options.MaxIncompleteEventAgeSeconds);
 
         discord.JoinedGuild += Discord_JoinedGuild;
@@ -75,7 +79,10 @@ public sealed class FrigateBot
         switch (command.CommandName)
         {
             case configureCommandName:
-                await HandleConfigureCommand(command);
+                await HandleConfigureCommandAsync(command);
+                break;
+            case silenceCommandName:
+                await HandleSilenceCommandAsync(command);
                 break;
             default:
                 await command.RespondAsync("Unknown command");
@@ -127,7 +134,7 @@ public sealed class FrigateBot
         }
     }
 
-    private async Task HandleConfigureCommand(SocketSlashCommand command)
+    private async Task HandleConfigureCommandAsync(SocketSlashCommand command)
     {
         var setting = command.Data.Options.FirstOrDefault();
         switch (setting?.Name)
@@ -149,6 +156,40 @@ public sealed class FrigateBot
                 break;
             default:
                 await command.RespondAsync("Unknown setting");
+                break;
+        }
+    }
+
+    private async Task HandleSilenceCommandAsync(SocketSlashCommand command)
+    {
+        var setting = command.Data.Options.FirstOrDefault();
+        switch (setting?.Name)
+        {
+            case silenceDurationOptionName:
+                if (command.GuildId.HasValue && setting.Value is long durationMinutes)
+                {
+                    if (durationMinutes >= 0)
+                    {
+                        var duration = TimeSpan.FromMinutes(durationMinutes);
+                        if (state.CctvChannelByGuild.ContainsKey(command.GuildId.Value))
+                        {
+                            logger.Information("Silencing alerts to all guilds for {Duration} (requested by {Name} {UserId})", duration, command.User.GlobalName, command.User.Id);
+                        }
+                        state.Alter(state => state.LastCompletedEventStartUtc = DateTimeOffset.UtcNow.Add(duration));
+                        await command.RespondAsync(durationMinutes == 0 ? "Resuming alerts" : $"Silencing alerts for {duration}.", ephemeral: true);
+                    }
+                    else
+                    {
+                        await command.RespondAsync($"Please specify a non-negative duration.", ephemeral: true);
+                    }
+                }
+                else
+                {
+                    await command.RespondAsync("Please specify a duration.", ephemeral: true);
+                }
+                break;
+            default:
+                await command.RespondAsync("Unknown setting", ephemeral: true);
                 break;
         }
     }
@@ -199,6 +240,37 @@ public sealed class FrigateBot
                 );
             var commandRegistration = await discord.Rest.CreateGuildCommand(newConfigureCommand.Build(), guild.Id);
             state.Alter(state => state.ConfigureCommandByGuildId[guild.Id] = commandRegistration.Id);
+        }
+
+        if (allowSilenceCommand)
+        {
+            if (!state.SilenceCommandByGuildId.TryGetValue(guild.Id, out var silenceCommandId) || await guild.GetApplicationCommandAsync(silenceCommandId) is var silenceCommand and null)
+            {
+                var newSilenceCommand = new SlashCommandBuilder()
+                .WithName(silenceCommandName)
+                .WithDescription($"Temporarily silence {discord.CurrentUser.GlobalName ?? "Frigate Bot"}. Alerts and events raised during this time will not be forwarded.")
+                    .WithDefaultMemberPermissions(GuildPermission.Administrator)
+                    .AddOption(new SlashCommandOptionBuilder()
+                        .WithName(silenceDurationOptionName)
+                        .WithDescription("Duration in minutes. Specify '0' to resume alerting.")
+                        .WithType(ApplicationCommandOptionType.Integer)
+                        .WithRequired(true)
+                    );
+                var commandRegistration = await discord.Rest.CreateGuildCommand(newSilenceCommand.Build(), guild.Id);
+                state.Alter(state => state.SilenceCommandByGuildId[guild.Id] = commandRegistration.Id);
+            }
+        }
+        else
+        {
+            if (state.SilenceCommandByGuildId.TryGetValue(guild.Id, out var silenceCommandId))
+            {
+                if (await guild.GetApplicationCommandAsync(silenceCommandId) is { } silenceCommand)
+                {
+                    await silenceCommand.DeleteAsync();
+                }
+
+                state.Alter(state => state.SilenceCommandByGuildId.Remove(guild.Id));
+            }
         }
     }
 
