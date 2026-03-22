@@ -15,3 +15,6 @@ artifacts/
 *.vspx
 TestResults/
 BenchmarkDotNet.Artifacts/
+
+FrigateBot/state.json
+FrigateBot/log.txt
