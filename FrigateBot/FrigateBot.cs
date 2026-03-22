@@ -23,7 +23,7 @@ public sealed class FrigateBot
     private readonly string discordToken;
     private readonly bool showDetections;
     private readonly TimeSpan maxIncompleteEventAge;
-    private readonly bool allowSilenceCommand;
+    private readonly long? maxSilenceDurationMinutes;
     private TaskCompletionSource discordReadyTcs;
 
     public FrigateBot(FrigateBotOptions options, ILogger logger)
@@ -40,7 +40,7 @@ public sealed class FrigateBot
         });
         discordToken = options.DiscordToken;
         showDetections = options.ShowDetections;
-        allowSilenceCommand = options.AllowSilenceCommand;
+        maxSilenceDurationMinutes = options.MaxSilenceDuration;
         maxIncompleteEventAge = TimeSpan.FromSeconds(options.MaxIncompleteEventAgeSeconds);
 
         discord.JoinedGuild += Discord_JoinedGuild;
@@ -168,7 +168,7 @@ public sealed class FrigateBot
             case silenceDurationOptionName:
                 if (command.GuildId.HasValue && setting.Value is long durationMinutes)
                 {
-                    if (durationMinutes >= 0)
+                    if (durationMinutes >= 0 && durationMinutes < (maxSilenceDurationMinutes ?? 0))
                     {
                         var duration = TimeSpan.FromMinutes(durationMinutes);
                         if (state.CctvChannelByGuild.ContainsKey(command.GuildId.Value))
@@ -180,7 +180,7 @@ public sealed class FrigateBot
                     }
                     else
                     {
-                        await command.RespondAsync($"Please specify a non-negative duration.", ephemeral: true);
+                        await command.RespondAsync($"Please specify a duration in minutes between 0 and {maxSilenceDurationMinutes}.", ephemeral: true);
                     }
                 }
                 else
@@ -242,7 +242,7 @@ public sealed class FrigateBot
             state.Alter(state => state.ConfigureCommandByGuildId[guild.Id] = commandRegistration.Id);
         }
 
-        if (allowSilenceCommand)
+        if (maxSilenceDurationMinutes.HasValue)
         {
             if (!state.SilenceCommandByGuildId.TryGetValue(guild.Id, out var silenceCommandId) || await guild.GetApplicationCommandAsync(silenceCommandId) is var silenceCommand and null)
             {
