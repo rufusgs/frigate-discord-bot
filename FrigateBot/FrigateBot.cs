@@ -13,8 +13,10 @@ public sealed class FrigateBot
     private const string silenceCommandName = "silence";
     private const string silenceDurationOptionName = "duration";
     private const string postClipCommandPrefix = "post-clip-";
+    private const string locateCommandPrefix = "locate-";
 
     private static readonly Emoji filmFramesEmoji = new("🎞️");
+    private static readonly Emoji magnifyingGlassTiltedLeftEmoji = new("🔍");
     private readonly ILogger logger;
     private readonly State state;
     private readonly TimeSpan frigatePollInterval;
@@ -124,6 +126,42 @@ public sealed class FrigateBot
                     {
                         logger.Warning(ex, "Exception while attempting to retrieve or upload clip for event when responding to button press.");
                         await component.FollowupAsync($"Error while attempting to retrieve or upload clip for event `{eventId}`", ephemeral: true);
+                    }
+                });
+            }
+        }
+        else if (component.Data.CustomId?.StartsWith(locateCommandPrefix) ?? false)
+        {
+            var eventId = component.Data.CustomId[locateCommandPrefix.Length..];
+            if (string.IsNullOrEmpty(eventId))
+            {
+                await component.RespondAsync("No frigate event ID specified", ephemeral: true);
+            }
+            else
+            {
+                await component.DeferLoadingAsync();
+
+                // service the request on the thread pool rather than blocking the gateway
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        logger.Information("{User} requested thumbnail upload for event {Id}.", component.User.GlobalName, eventId);
+
+                        var snapshotStream = await frigate.GetEventThumbnailAsync(eventId, "jpg");
+                        if (snapshotStream is null)
+                        {
+                            logger.Warning("Unable to retrieve thumbnail for event when responding to button press.");
+                            await component.FollowupAsync("Failed to retrieve thumbnail from Frigate", ephemeral: true);
+                            return;
+                        }
+
+                        await component.FollowupWithFileAsync(snapshotStream, $"{eventId}.jpg", $"{component.User.Mention} requested object location.");
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.Warning(ex, "Exception while attempting to post thumbnail when responding to button press.");
+                        await component.FollowupAsync($"Error while attempting to retrieve or upload thumbnail for event `{eventId}`", ephemeral: true);
                     }
                 });
             }
@@ -357,17 +395,18 @@ public sealed class FrigateBot
                                             messageText.Append(":T> (event is still ongoing).");
                                         }
 
-                                        var postClipButton = new ComponentBuilder()
-                                            .WithButton("Post Clip", $"post-clip-{@event.Id}", emote: filmFramesEmoji)
+                                        var messageButtons = new ComponentBuilder()
+                                            .WithButton("Post Clip", $"{postClipCommandPrefix}{@event.Id}", emote: filmFramesEmoji)
+                                            .WithButton("Locate Object", $"{locateCommandPrefix}{@event.Id}", emote: magnifyingGlassTiltedLeftEmoji)
                                             .Build();
 
                                         if (previewStream is not null)
                                         {
-                                            await cctvChannel.SendFilesAsync([new FileAttachment(previewStream, $"{@event.Id}.gif", description: @event.Label)], messageText.ToString(), components: postClipButton);
+                                            await cctvChannel.SendFilesAsync([new FileAttachment(previewStream, $"{@event.Id}.gif", description: @event.Label)], messageText.ToString(), components: messageButtons);
                                         }
                                         else
                                         {
-                                            await cctvChannel.SendMessageAsync(messageText.ToString(), components: postClipButton);
+                                            await cctvChannel.SendMessageAsync(messageText.ToString(), components: messageButtons);
                                         }
                                     }
                                     else

@@ -8,7 +8,7 @@ public sealed class FrigateClient(string baseAddress) : IDisposable
 {
     private readonly HttpClient httpClient = new() { BaseAddress = new(baseAddress) };
 
-    public Task<List<EventModel>?> GetEventsAsync(DateTimeOffset? since)
+    public async Task<List<EventModel>?> GetEventsAsync(DateTimeOffset? since)
     {
         var queryBuilder = new StringBuilder("api/events?sort=date_asc");
 
@@ -18,7 +18,15 @@ public sealed class FrigateClient(string baseAddress) : IDisposable
             queryBuilder.Append(EpochTimeJsonConverter.ToEpochTime(since.Value));
         }
 
-        return httpClient.GetFromJsonAsync<List<EventModel>>(queryBuilder.ToString());
+        return await httpClient.GetFromJsonAsync<List<EventModel>>(queryBuilder.ToString());
+    }
+
+    public async Task<EventModel?> GetEventByIdAsync(string eventId)
+    {
+        var queryBuilder = new StringBuilder("api/event_ids?ids=");
+        queryBuilder.Append(eventId);
+        var result = await httpClient.GetFromJsonAsync<List<EventModel>?>(queryBuilder.ToString());
+        return result?.SingleOrDefault();
     }
 
     public async Task<Stream?> GetEventThumbnailAsync(string eventId, string extension)
